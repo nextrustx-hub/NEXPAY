@@ -49,3 +49,7 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Root-level scripts (not part of the build)
+generate-*.ts
+*.script.ts

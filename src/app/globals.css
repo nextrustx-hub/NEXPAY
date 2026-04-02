@@ -197,6 +197,10 @@
   text-shadow: 0 0 10px rgba(134, 239, 172, 0.8);
 }
 
+.border-neon-green {
+  border-color: #86efac;
+}
+
 .text-neon-cyan {
   color: #67e8f9;
   text-shadow: 0 0 10px rgba(103, 232, 249, 0.8);

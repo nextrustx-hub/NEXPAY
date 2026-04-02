@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -34,7 +36,7 @@ const walletItems = [
 const platformItems = [
   { label: 'Links de Pagamento', href: '/dashboard/payment-links', icon: Link2 },
   { label: 'Developers', href: '/dashboard/developers', icon: Code },
-  { label: 'Segurança', href: '/dashboard/transactions', icon: ShieldCheck },
+  { label: 'Segurança', href: '/dashboard/security', icon: ShieldCheck },
 ];
 
 export function AppSidebar() {

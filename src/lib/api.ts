@@ -193,6 +193,20 @@ class ApiService {
     });
   }
 
+  async withdrawCrypto(amount: number, currency: string, address: string, network: string): Promise<WithdrawResponse> {
+    return this.request<WithdrawResponse>('/wallet/withdraw/crypto', {
+      method: 'POST',
+      body: JSON.stringify({ amount, currency, address, network }),
+    });
+  }
+
+  async changePassword(current_password: string, new_password: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password, new_password }),
+    });
+  }
+
   async swap(from: string, to: string, amount: number): Promise<SwapResponse> {
     return this.request<SwapResponse>('/wallet/swap', {
       method: 'POST',
@@ -232,7 +246,7 @@ class ApiService {
 
   // PUBLIC route — NO auth header
   async getCheckoutDetails(id: string): Promise<CheckoutDetails> {
-    return this.request<CheckoutDetails>(`/checkout/${id}`, { auth: false });
+    return this.request<CheckoutDetails>(`/checkout/${id}`, {}, false);
   }
 
   // ==================== B2B API KEYS ====================

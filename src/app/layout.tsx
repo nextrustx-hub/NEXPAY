@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
-import Footer from "@/components/layout/Footer";
 import { AuthProvider } from "@/contexts/AuthContext";
 import KycBanner from "@/components/layout/KycBanner";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -19,10 +18,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#86efac" },
-    { media: "(prefers-color-scheme: dark)", color: "#86efac" },
-  ],
+  themeColor: "#4ADE80",
 };
 
 export const metadata: Metadata = {
@@ -31,6 +27,13 @@ export const metadata: Metadata = {
   keywords: ["NeXPay", "carteira digital", "wallet", "PIX", "Bitcoin", "USDT", "BRL", "EUR", "crypto", "swap"],
   icons: {
     icon: "/logo.png",
+    apple: "/logo.png",
+  },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "NeXPay",
   },
 };
 
@@ -41,6 +44,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+      </head>
       <body
         className={`${inter.variable} antialiased bg-background text-foreground overscroll-none`}
       >
@@ -51,7 +58,6 @@ export default function RootLayout({
             <DashboardLayout>
               {children}
             </DashboardLayout>
-            <Footer />
           </div>
           <Toaster 
             position="top-center"

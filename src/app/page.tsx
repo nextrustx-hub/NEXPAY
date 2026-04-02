@@ -12,12 +12,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { 
   Wallet, ArrowRight, Shield, Zap, Clock, Bitcoin,
   CircleDollarSign, LogIn,
   UserPlus, Eye, EyeOff, Loader2, ArrowLeftRight,
   QrCode, Send, Copy, RefreshCw, Crown, User,
-  CheckCircle2, Building2, AlertTriangle
+  CheckCircle2, AlertTriangle, Coins, Globe
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
@@ -245,11 +246,12 @@ function Dashboard() {
 
   // SEPA deposit
   const [sepaAmount, setSepaAmount] = useState('');
-  const [sepaResult, setSepaResult] = useState<{ reference: string } | null>(null);
+  const [sepaResult, setSepaResult] = useState<Record<string, string> | null>(null);
   const [isDepositingSepa, setIsDepositingSepa] = useState(false);
 
   // Crypto deposit
-  const [cryptoNetwork, setCryptoNetwork] = useState('USDTTRC20');
+  const [selectedCrypto, setSelectedCrypto] = useState<string>('BTC');
+  const [usdtNetwork, setUsdtNetwork] = useState<string>('TRC20');
   const [cryptoResult, setCryptoResult] = useState<{ address: string; network: string; min_deposit: string } | null>(null);
   const [isDepositingCrypto, setIsDepositingCrypto] = useState(false);
 
@@ -258,6 +260,12 @@ function Dashboard() {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawPixKey, setWithdrawPixKey] = useState('');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [withdrawTab, setWithdrawTab] = useState<'pix' | 'sepa' | 'crypto'>('pix');
+  const [withdrawIban, setWithdrawIban] = useState('');
+  const [withdrawHolderName, setWithdrawHolderName] = useState('');
+  const [withdrawCryptoAddress, setWithdrawCryptoAddress] = useState('');
+  const [withdrawCryptoCurrency, setWithdrawCryptoCurrency] = useState('BTC');
+  const [withdrawNetwork, setWithdrawNetwork] = useState('TRC20');
 
   useEffect(() => {
     if (user && !authLoading) {
@@ -302,7 +310,7 @@ function Dashboard() {
       setIsDepositingPix(true);
       const response = await api.depositFiat(parseFloat(pixAmount), 'BRL');
       if (response.success) { setPixQrCode(response.qr_code); setPixCopyPaste(response.copy_paste); }
-    } catch {} finally { setIsDepositingPix(false); }
+    } catch (err) { console.error(err); } finally { setIsDepositingPix(false); }
   };
 
   const handleSepaDeposit = async () => {
@@ -310,36 +318,80 @@ function Dashboard() {
     try {
       setIsDepositingSepa(true);
       const response = await api.depositFiat(parseFloat(sepaAmount), 'EUR');
-      if (response.success) { setSepaResult({ reference: response.transactionId }); }
-    } catch {} finally { setIsDepositingSepa(false); }
+      if (response.success) {
+        const fields: Record<string, string> = {};
+        if (response.transactionId) fields.reference = response.transactionId;
+        (Object.keys(response) as Array<keyof typeof response>).forEach((key) => {
+          const val = response[key];
+          if (val !== null && val !== undefined && typeof val === 'string' && key !== 'success' && key !== 'type') {
+            fields[key] = val;
+          }
+        });
+        setSepaResult(fields);
+      }
+    } catch (err) { console.error(err); } finally { setIsDepositingSepa(false); }
+  };
+
+  const getCryptoCurrencyCode = (): string => {
+    if (selectedCrypto === 'USDT') {
+      switch (usdtNetwork) {
+        case 'BEP20': return 'USDTBEP20';
+        case 'ERC20': return 'USDT_ERC20';
+        case 'TRC20':
+        default: return 'USDTRC20';
+      }
+    }
+    return selectedCrypto;
   };
 
   const handleCryptoDeposit = async () => {
     try {
       setIsDepositingCrypto(true);
-      const response = await api.depositCrypto(cryptoNetwork);
+      const currencyCode = getCryptoCurrencyCode();
+      const response = await api.depositCrypto(currencyCode);
       if (response.success) { setCryptoResult({ address: response.address, network: response.network, min_deposit: response.min_deposit }); }
-    } catch {} finally { setIsDepositingCrypto(false); }
+    } catch (err) { console.error(err); } finally { setIsDepositingCrypto(false); }
   };
 
   const handleWithdraw = async () => {
     if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) return;
-    if (!withdrawPixKey) return;
     try {
       setIsWithdrawing(true);
-      await api.withdrawFiat(parseFloat(withdrawAmount), 'BRL', withdrawPixKey);
+      if (withdrawTab === 'pix') {
+        if (!withdrawPixKey) return;
+        await api.withdrawFiat(parseFloat(withdrawAmount), 'BRL', withdrawPixKey);
+      } else if (withdrawTab === 'sepa') {
+        if (!withdrawIban) return;
+        await api.withdrawFiat(parseFloat(withdrawAmount), 'EUR', withdrawIban);
+      } else if (withdrawTab === 'crypto') {
+        if (!withdrawCryptoAddress) return;
+        const networkCode = withdrawCryptoCurrency === 'USDT'
+          ? (withdrawNetwork === 'BEP20' ? 'USDTBEP20' : withdrawNetwork === 'ERC20' ? 'USDT_ERC20' : 'USDTRC20')
+          : withdrawCryptoCurrency;
+        await api.withdrawCrypto(parseFloat(withdrawAmount), withdrawCryptoCurrency, withdrawCryptoAddress, networkCode);
+      }
       setShowWithdraw(false);
       setWithdrawAmount('');
       setWithdrawPixKey('');
+      setWithdrawIban('');
+      setWithdrawHolderName('');
+      setWithdrawCryptoAddress('');
       loadBalances();
       loadTransactions();
-    } catch {} finally { setIsWithdrawing(false); }
+    } catch (err) { console.error(err); } finally { setIsWithdrawing(false); }
   };
 
   const resetDepositModal = () => {
     setPixAmount(''); setPixQrCode(null); setPixCopyPaste(null);
     setSepaAmount(''); setSepaResult(null);
-    setCryptoNetwork('USDTTRC20'); setCryptoResult(null);
+    setSelectedCrypto('BTC'); setUsdtNetwork('TRC20'); setCryptoResult(null);
+  };
+
+  const resetWithdrawModal = () => {
+    setWithdrawTab('pix');
+    setWithdrawAmount(''); setWithdrawPixKey('');
+    setWithdrawIban(''); setWithdrawHolderName('');
+    setWithdrawCryptoAddress(''); setWithdrawCryptoCurrency('BTC'); setWithdrawNetwork('TRC20');
   };
 
   // === Helpers ===
@@ -461,7 +513,7 @@ function Dashboard() {
         <Button className="btn-green-enhanced py-6 text-lg" onClick={() => { resetDepositModal(); setShowDeposit(true); }}>
           <QrCode className="mr-2 h-5 w-5" />Depositar
         </Button>
-        <Button className="btn-cyan-enhanced py-6 text-lg" onClick={() => setShowWithdraw(true)}>
+        <Button className="btn-cyan-enhanced py-6 text-lg" onClick={() => { resetWithdrawModal(); setShowWithdraw(true); }}>
           <Send className="mr-2 h-5 w-5" />Sacar
         </Button>
         <Link href="/exchange" className="md:col-span-1 col-span-2">
@@ -509,14 +561,14 @@ function Dashboard() {
         </Card>
       </motion.div>
 
-      {/* ==================== DEPOSIT MODAL (Omni-Channel - FASE 2.3) ==================== */}
+      {/* ==================== DEPOSIT MODAL (Enterprise - NowPayments Crypto) ==================== */}
       <AnimatePresence>
         {showDeposit && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
             onClick={() => setShowDeposit(false)}
           >
             <motion.div
@@ -524,7 +576,7 @@ function Dashboard() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md"
+              className="w-full max-w-md max-h-[90vh] overflow-y-auto"
             >
               <Card className="glass-strong border-white/10">
                 <CardHeader>
@@ -541,7 +593,7 @@ function Dashboard() {
                       <TabsTrigger value="crypto">Crypto</TabsTrigger>
                     </TabsList>
 
-                    {/* ---- PIX Tab ---- */}
+                    {/* ---- PIX Tab (Real QR Code) ---- */}
                     <TabsContent value="pix">
                       {!pixQrCode ? (
                         <div className="space-y-4">
@@ -556,7 +608,7 @@ function Dashboard() {
                               disabled={isDepositingPix}
                             />
                           </div>
-                          <Button className="w-full btn-green-enhanced" onClick={handlePixDeposit} disabled={isDepositingPix}>
+                          <Button className="w-full btn-green-enhanced" onClick={handlePixDeposit} disabled={isDepositingPix || !pixAmount || parseFloat(pixAmount) <= 0}>
                             {isDepositingPix && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                             Gerar PIX
                           </Button>
@@ -569,9 +621,11 @@ function Dashboard() {
                           </div>
                           <div className="flex justify-center">
                             <div className="bg-white p-4 rounded-lg">
-                              <div className="w-48 h-48 bg-gray-200 flex items-center justify-center">
-                                <QrCode className="h-24 w-24 text-gray-600" />
-                              </div>
+                              {pixQrCode && pixQrCode.startsWith('data:') ? (
+                                <img src={pixQrCode} alt="QR Code PIX" className="w-48 h-48 rounded" />
+                              ) : pixQrCode ? (
+                                <img src={'data:image/png;base64,' + pixQrCode} alt="QR Code PIX" className="w-48 h-48 rounded" />
+                              ) : null}
                             </div>
                           </div>
                           <div className="space-y-2">
@@ -595,7 +649,7 @@ function Dashboard() {
                       )}
                     </TabsContent>
 
-                    {/* ---- SEPA Tab ---- */}
+                    {/* ---- SEPA Tab (Dynamic Fields) ---- */}
                     <TabsContent value="sepa">
                       {!sepaResult ? (
                         <div className="space-y-4">
@@ -610,7 +664,7 @@ function Dashboard() {
                               disabled={isDepositingSepa}
                             />
                           </div>
-                          <Button className="w-full btn-green-enhanced" onClick={handleSepaDeposit} disabled={isDepositingSepa}>
+                          <Button className="w-full btn-green-enhanced" onClick={handleSepaDeposit} disabled={isDepositingSepa || !sepaAmount || parseFloat(sepaAmount) <= 0}>
                             {isDepositingSepa && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                             Gerar Depósito
                           </Button>
@@ -622,35 +676,22 @@ function Dashboard() {
                             Depósito gerado com sucesso!
                           </div>
                           <div className="space-y-3 p-4 rounded-lg bg-white/5 border border-white/10">
-                            <div className="flex items-center gap-2">
-                              <Building2 className="h-4 w-4 text-gray-400 shrink-0" />
-                              <div>
-                                <p className="text-xs text-gray-500">Banco</p>
-                                <p className="text-sm text-white font-medium">NexTrustX Bank</p>
+                            {Object.entries(sepaResult).map(([key, value]) => (
+                              <div key={key}>
+                                <p className="text-xs text-gray-500">{key.replace(/_/g, ' ').toUpperCase()}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm text-white font-mono break-all">{String(value)}</p>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 shrink-0"
+                                    onClick={() => handleCopy(String(value), 'sepa-' + key)}
+                                  >
+                                    {copiedField === 'sepa-' + key ? <CheckCircle2 className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+                                  </Button>
+                                </div>
                               </div>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500 mb-1">IBAN</p>
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm text-white font-mono">DE89 3704 0044 0532 0130 00</p>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7 shrink-0"
-                                  onClick={() => handleCopy('DE89 3704 0044 0532 0130 00', 'iban')}
-                                >
-                                  {copiedField === 'iban' ? <CheckCircle2 className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
-                                </Button>
-                              </div>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500">BIC</p>
-                              <p className="text-sm text-white font-mono">NEXADEFF</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500">Referência</p>
-                              <p className="text-sm text-white font-mono">{sepaResult.reference}</p>
-                            </div>
+                            ))}
                           </div>
                           <Button variant="outline" className="w-full" onClick={() => { setSepaResult(null); setSepaAmount(''); }}>
                             <RefreshCw className="h-4 w-4 mr-2" />Novo Depósito
@@ -659,37 +700,75 @@ function Dashboard() {
                       )}
                     </TabsContent>
 
-                    {/* ---- Crypto Tab ---- */}
+                    {/* ---- Crypto Tab (NowPayments - Multi Currency + Network) ---- */}
                     <TabsContent value="crypto">
                       {!cryptoResult ? (
                         <div className="space-y-4">
+                          {/* Currency Selector */}
                           <div className="space-y-2">
-                            <Label className="text-gray-300">Rede</Label>
-                            <select
-                              value={cryptoNetwork}
-                              onChange={(e) => setCryptoNetwork(e.target.value)}
-                              className="w-full form-input-enhanced rounded-md p-2"
-                              disabled={isDepositingCrypto}
-                            >
-                              <option value="USDTTRC20">USDT (TRC-20)</option>
-                              <option value="BTC">BTC (Bitcoin)</option>
-                            </select>
+                            <Label className="text-gray-300">Moeda</Label>
+                            <div className="grid grid-cols-5 gap-2">
+                              {[
+                                { id: 'BTC', label: 'BTC', icon: <Bitcoin className="h-4 w-4" />, color: 'border-orange-500/50 bg-orange-900/20 text-orange-400', activeColor: 'border-orange-500 bg-orange-900/40 text-orange-300 ring-orange-500/30' },
+                                { id: 'ETH', label: 'ETH', icon: <Coins className="h-4 w-4" />, color: 'border-purple-500/50 bg-purple-900/20 text-purple-400', activeColor: 'border-purple-500 bg-purple-900/40 text-purple-300 ring-purple-500/30' },
+                                { id: 'LTC', label: 'LTC', icon: <Coins className="h-4 w-4" />, color: 'border-gray-500/50 bg-gray-900/20 text-gray-400', activeColor: 'border-gray-500 bg-gray-900/40 text-gray-300 ring-gray-500/30' },
+                                { id: 'XMR', label: 'XMR', icon: <Coins className="h-4 w-4" />, color: 'border-orange-500/50 bg-orange-900/20 text-orange-400', activeColor: 'border-orange-500 bg-orange-900/40 text-orange-300 ring-orange-500/30' },
+                                { id: 'USDT', label: 'USDT', icon: <CircleDollarSign className="h-4 w-4" />, color: 'border-green-500/50 bg-green-900/20 text-green-400', activeColor: 'border-green-500 bg-green-900/40 text-green-300 ring-green-500/30' },
+                              ].map((coin) => (
+                                <button
+                                  key={coin.id}
+                                  type="button"
+                                  disabled={isDepositingCrypto}
+                                  onClick={() => { setSelectedCrypto(coin.id); setCryptoResult(null); }}
+                                  className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 transition-all text-xs font-medium ${selectedCrypto === coin.id ? `${coin.activeColor} ring-2` : `${coin.color} hover:opacity-80`}`}
+                                >
+                                  {coin.icon}
+                                  {coin.label}
+                                </button>
+                              ))}
+                            </div>
                           </div>
+
+                          {/* USDT Network Selection */}
+                          {selectedCrypto === 'USDT' && (
+                            <div className="space-y-2">
+                              <Label className="text-gray-300 flex items-center gap-1"><Globe className="h-3.5 w-3.5" /> Rede</Label>
+                              <RadioGroup value={usdtNetwork} onValueChange={setUsdtNetwork} disabled={isDepositingCrypto}>
+                                {[
+                                  { value: 'TRC20', label: 'TRC-20', desc: 'Tron', color: 'border-green-500/50' },
+                                  { value: 'BEP20', label: 'BEP-20', desc: 'BSC', color: 'border-yellow-500/50' },
+                                  { value: 'ERC20', label: 'ERC-20', desc: 'Ethereum', color: 'border-blue-500/50' },
+                                ].map((net) => (
+                                  <label
+                                    key={net.value}
+                                    className={`flex items-center gap-3 p-3 rounded-lg border ${usdtNetwork === net.value ? 'border-white/30 bg-white/10' : 'border-white/10 bg-white/5'} cursor-pointer transition-all`}
+                                  >
+                                    <RadioGroupItem value={net.value} />
+                                    <div>
+                                      <p className="text-sm text-white font-medium">{net.label}</p>
+                                      <p className="text-xs text-gray-400">{net.desc}</p>
+                                    </div>
+                                  </label>
+                                ))}
+                              </RadioGroup>
+                            </div>
+                          )}
+
                           <Button className="w-full btn-green-enhanced" onClick={handleCryptoDeposit} disabled={isDepositingCrypto}>
                             {isDepositingCrypto && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                            Gerar Endereço
+                            Gerar Carteira
                           </Button>
                         </div>
                       ) : (
                         <div className="space-y-4">
                           <div className="flex items-center gap-2 text-green-400 text-sm font-medium">
                             <CheckCircle2 className="h-4 w-4" />
-                            Endereço gerado com sucesso!
+                            Carteira gerada com sucesso!
                           </div>
                           <div className="space-y-3 p-4 rounded-lg bg-white/5 border border-white/10">
                             <div>
                               <p className="text-xs text-gray-500">Rede</p>
-                              <p className="text-sm text-white font-medium">{cryptoNetwork === 'USDTTRC20' ? 'USDT (TRC-20)' : 'BTC (Bitcoin)'}</p>
+                              <p className="text-sm text-white font-medium">{cryptoResult.network || selectedCrypto}</p>
                             </div>
                             <div>
                               <p className="text-xs text-gray-500 mb-1">Endereço da Carteira</p>
@@ -705,15 +784,17 @@ function Dashboard() {
                                 </Button>
                               </div>
                             </div>
-                            <div>
-                              <p className="text-xs text-gray-500">Depósito Mínimo</p>
-                              <p className="text-sm text-white">{cryptoResult.min_deposit} {cryptoNetwork === 'USDTTRC20' ? 'USDT' : 'BTC'}</p>
-                            </div>
+                            {cryptoResult.min_deposit && (
+                              <div>
+                                <p className="text-xs text-gray-500">Depósito Mínimo</p>
+                                <p className="text-sm text-white">{cryptoResult.min_deposit} {selectedCrypto}</p>
+                              </div>
+                            )}
                           </div>
                           <div className="flex items-start gap-2 p-3 rounded-lg bg-yellow-900/20 border border-yellow-500/30">
                             <AlertTriangle className="h-4 w-4 text-yellow-400 shrink-0 mt-0.5" />
                             <p className="text-xs text-yellow-300">
-                              Envie apenas {cryptoNetwork === 'USDTTRC20' ? 'USDT (TRC-20)' : 'BTC (Bitcoin)'} para este endereço. Outros ativos podem ser perdidos permanentemente.
+                              Envie apenas {selectedCrypto === 'USDT' ? `USDT (${usdtNetwork})` : selectedCrypto} para este endereço. Outros ativos podem ser perdidos permanentemente.
                             </p>
                           </div>
                           <Button variant="outline" className="w-full" onClick={() => { setCryptoResult(null); }}>
@@ -730,14 +811,14 @@ function Dashboard() {
         )}
       </AnimatePresence>
 
-      {/* ==================== WITHDRAW MODAL ==================== */}
+      {/* ==================== WITHDRAW MODAL (Multi-Tab - PIX + SEPA + Crypto) ==================== */}
       <AnimatePresence>
         {showWithdraw && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
             onClick={() => setShowWithdraw(false)}
           >
             <motion.div
@@ -745,26 +826,134 @@ function Dashboard() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md"
+              className="w-full max-w-md max-h-[90vh] overflow-y-auto"
             >
               <Card className="glass-strong border-white/10">
                 <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2"><Send className="h-5 w-5 text-neon-cyan" />Sacar via PIX</CardTitle>
-                  <CardDescription>Solicite um saque para sua chave PIX</CardDescription>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Send className="h-5 w-5 text-neon-cyan" />Sacar
+                  </CardTitle>
+                  <CardDescription>Escolha o método de saque</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label className="text-gray-300">Valor (BRL)</Label>
-                    <Input type="number" placeholder="0.00" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} className="form-input-enhanced" disabled={isWithdrawing} />
-                    <p className="text-xs text-gray-500">Saldo disponível: {formatCurrency(balances?.BRL || 0, 'BRL')}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-gray-300">Chave PIX</Label>
-                    <Input placeholder="Email, CPF, Telefone ou Chave Aleatória" value={withdrawPixKey} onChange={(e) => setWithdrawPixKey(e.target.value)} className="form-input-enhanced" disabled={isWithdrawing} />
-                  </div>
-                  <Button className="w-full btn-cyan-enhanced" onClick={handleWithdraw} disabled={isWithdrawing}>
-                    {isWithdrawing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}Solicitar Saque
-                  </Button>
+                <CardContent>
+                  <Tabs value={withdrawTab} onValueChange={(v) => setWithdrawTab(v as 'pix' | 'sepa' | 'crypto')} className="w-full">
+                    <TabsList className="grid grid-cols-3 w-full mb-4">
+                      <TabsTrigger value="pix">PIX</TabsTrigger>
+                      <TabsTrigger value="sepa">SEPA</TabsTrigger>
+                      <TabsTrigger value="crypto">Crypto</TabsTrigger>
+                    </TabsList>
+
+                    {/* ---- PIX Withdraw ---- */}
+                    <TabsContent value="pix">
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label className="text-gray-300">Valor (BRL)</Label>
+                          <Input type="number" placeholder="0.00" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} className="form-input-enhanced" disabled={isWithdrawing} />
+                          <p className="text-xs text-gray-500">Saldo disponível: {formatCurrency(balances?.BRL || 0, 'BRL')}</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-gray-300">Chave PIX</Label>
+                          <Input placeholder="Email, CPF, Telefone ou Chave Aleatória" value={withdrawPixKey} onChange={(e) => setWithdrawPixKey(e.target.value)} className="form-input-enhanced" disabled={isWithdrawing} />
+                        </div>
+                        <Button className="w-full btn-cyan-enhanced" onClick={handleWithdraw} disabled={isWithdrawing || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || !withdrawPixKey}>
+                          {isWithdrawing && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                          Solicitar Saque
+                        </Button>
+                      </div>
+                    </TabsContent>
+
+                    {/* ---- SEPA Withdraw ---- */}
+                    <TabsContent value="sepa">
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label className="text-gray-300">Valor (EUR)</Label>
+                          <Input type="number" placeholder="0.00" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} className="form-input-enhanced" disabled={isWithdrawing} />
+                          <p className="text-xs text-gray-500">Saldo disponível: {formatCurrency(balances?.EUR || 0, 'EUR')}</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-gray-300">IBAN</Label>
+                          <Input placeholder="DE89 3704 0044 0532 0130 00" value={withdrawIban} onChange={(e) => setWithdrawIban(e.target.value)} className="form-input-enhanced" disabled={isWithdrawing} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-gray-300">Nome do Titular</Label>
+                          <Input placeholder="Nome completo do titular da conta" value={withdrawHolderName} onChange={(e) => setWithdrawHolderName(e.target.value)} className="form-input-enhanced" disabled={isWithdrawing} />
+                        </div>
+                        <Button className="w-full btn-cyan-enhanced" onClick={handleWithdraw} disabled={isWithdrawing || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || !withdrawIban}>
+                          {isWithdrawing && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                          Solicitar Saque
+                        </Button>
+                      </div>
+                    </TabsContent>
+
+                    {/* ---- Crypto Withdraw ---- */}
+                    <TabsContent value="crypto">
+                      <div className="space-y-4">
+                        {/* Currency Selector */}
+                        <div className="space-y-2">
+                          <Label className="text-gray-300">Moeda</Label>
+                          <div className="grid grid-cols-5 gap-2">
+                            {[
+                              { id: 'BTC', label: 'BTC', icon: <Bitcoin className="h-4 w-4" />, color: 'border-orange-500/50 bg-orange-900/20 text-orange-400', activeColor: 'border-orange-500 bg-orange-900/40 text-orange-300 ring-orange-500/30' },
+                              { id: 'ETH', label: 'ETH', icon: <Coins className="h-4 w-4" />, color: 'border-purple-500/50 bg-purple-900/20 text-purple-400', activeColor: 'border-purple-500 bg-purple-900/40 text-purple-300 ring-purple-500/30' },
+                              { id: 'LTC', label: 'LTC', icon: <Coins className="h-4 w-4" />, color: 'border-gray-500/50 bg-gray-900/20 text-gray-400', activeColor: 'border-gray-500 bg-gray-900/40 text-gray-300 ring-gray-500/30' },
+                              { id: 'XMR', label: 'XMR', icon: <Coins className="h-4 w-4" />, color: 'border-orange-500/50 bg-orange-900/20 text-orange-400', activeColor: 'border-orange-500 bg-orange-900/40 text-orange-300 ring-orange-500/30' },
+                              { id: 'USDT', label: 'USDT', icon: <CircleDollarSign className="h-4 w-4" />, color: 'border-green-500/50 bg-green-900/20 text-green-400', activeColor: 'border-green-500 bg-green-900/40 text-green-300 ring-green-500/30' },
+                            ].map((coin) => (
+                              <button
+                                key={coin.id}
+                                type="button"
+                                disabled={isWithdrawing}
+                                onClick={() => setWithdrawCryptoCurrency(coin.id)}
+                                className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 transition-all text-xs font-medium ${withdrawCryptoCurrency === coin.id ? `${coin.activeColor} ring-2` : `${coin.color} hover:opacity-80`}`}
+                              >
+                                {coin.icon}
+                                {coin.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* USDT Network Selection */}
+                        {withdrawCryptoCurrency === 'USDT' && (
+                          <div className="space-y-2">
+                            <Label className="text-gray-300 flex items-center gap-1"><Globe className="h-3.5 w-3.5" /> Rede</Label>
+                            <RadioGroup value={withdrawNetwork} onValueChange={setWithdrawNetwork} disabled={isWithdrawing}>
+                              {[
+                                { value: 'TRC20', label: 'TRC-20', desc: 'Tron' },
+                                { value: 'BEP20', label: 'BEP-20', desc: 'BSC' },
+                                { value: 'ERC20', label: 'ERC-20', desc: 'Ethereum' },
+                              ].map((net) => (
+                                <label
+                                  key={net.value}
+                                  className={`flex items-center gap-3 p-3 rounded-lg border ${withdrawNetwork === net.value ? 'border-white/30 bg-white/10' : 'border-white/10 bg-white/5'} cursor-pointer transition-all`}
+                                >
+                                  <RadioGroupItem value={net.value} />
+                                  <div>
+                                    <p className="text-sm text-white font-medium">{net.label}</p>
+                                    <p className="text-xs text-gray-400">{net.desc}</p>
+                                  </div>
+                                </label>
+                              ))}
+                            </RadioGroup>
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <Label className="text-gray-300">Valor</Label>
+                          <Input type="number" placeholder="0.00" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} className="form-input-enhanced" disabled={isWithdrawing} />
+                          <p className="text-xs text-gray-500">Saldo disponível: {formatCurrency(balances?.[withdrawCryptoCurrency as keyof Balances] || 0, withdrawCryptoCurrency)}</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-gray-300">Endereço da Carteira</Label>
+                          <Input placeholder="Endereço de destino" value={withdrawCryptoAddress} onChange={(e) => setWithdrawCryptoAddress(e.target.value)} className="form-input-enhanced font-mono text-sm" disabled={isWithdrawing} />
+                        </div>
+                        <Button className="w-full btn-cyan-enhanced" onClick={handleWithdraw} disabled={isWithdrawing || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || !withdrawCryptoAddress}>
+                          {isWithdrawing && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                          Solicitar Saque
+                        </Button>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
                 </CardContent>
               </Card>
             </motion.div>

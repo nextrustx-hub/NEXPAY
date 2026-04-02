@@ -17,12 +17,17 @@ import {
   Loader2,
 } from 'lucide-react';
 
+/* ─── Helpers ──────────────────────────────────────────────────────────── */
+
 function formatAmount(amount: number, currency: string): string {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency,
-  }).format(amount);
+  const validCurrencies = ['BRL', 'EUR', 'USD', 'GBP', 'CHF', 'JPY', 'CNY'];
+  if (validCurrencies.includes(currency)) {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency }).format(amount);
+  }
+  return `${amount.toFixed(2)} ${currency}`;
 }
+
+/* ─── Main Component ──────────────────────────────────────────────────── */
 
 export default function CheckoutPage() {
   const params = useParams();
@@ -33,41 +38,59 @@ export default function CheckoutPage() {
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  /* ─── Fetch checkout details ───────────────────────────────────────── */
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
     async function load() {
       try {
         const res = await api.getCheckoutDetails(id);
-        setCheckout(res);
+        if (!cancelled) setCheckout(res);
       } catch {
-        setError(true);
+        if (!cancelled) setError(true);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
+  /* ─── Copy PIX code ────────────────────────────────────────────────── */
   const handleCopyPix = async () => {
     if (!checkout?.data?.pix_copy_paste) return;
-    await navigator.clipboard.writeText(checkout.data.pix_copy_paste);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    try {
+      await navigator.clipboard.writeText(checkout.data.pix_copy_paste);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = checkout.data.pix_copy_paste;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
   };
 
-  // Loading state
+  /* ─── Loading State ────────────────────────────────────────────────── */
   if (loading) {
     return (
       <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
-          <p className="text-gray-500 text-sm">Carregando...</p>
+          <p className="text-gray-500 text-sm">Carregando pagamento...</p>
         </div>
       </div>
     );
   }
 
-  // Error state
+  /* ─── Error State ──────────────────────────────────────────────────── */
   if (error || !checkout) {
     return (
       <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-4">
@@ -76,10 +99,10 @@ export default function CheckoutPage() {
             <AlertCircle className="h-7 w-7 text-red-400" />
           </div>
           <h1 className="text-xl font-semibold text-gray-900 mb-2">
-            Link não encontrado
+            Link inválido ou expirado
           </h1>
           <p className="text-gray-500 text-sm">
-            Link de pagamento não encontrado ou expirado
+            Este link de pagamento não existe ou expirou. Entre em contato com o vendedor para obter um novo link.
           </p>
         </div>
       </div>
@@ -91,9 +114,9 @@ export default function CheckoutPage() {
   return (
     <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
-        {/* Main Card */}
+        {/* ─── Main Receipt Card ────────────────────────────────────── */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          {/* Header */}
+          {/* Header with logo */}
           <div className="p-6 pb-0">
             <div className="flex items-center justify-center mb-6">
               <Image
@@ -106,7 +129,7 @@ export default function CheckoutPage() {
               />
             </div>
 
-            {/* Title */}
+            {/* Product title */}
             <h1 className="text-xl font-semibold text-gray-900 text-center">
               {data.title}
             </h1>
@@ -118,7 +141,7 @@ export default function CheckoutPage() {
               </p>
             )}
 
-            {/* Amount */}
+            {/* Amount — prominently displayed */}
             <div className="mt-6 mb-6 text-center">
               <p className="text-4xl font-bold text-gray-900 tracking-tight">
                 {formatAmount(data.amount, data.currency)}
@@ -130,20 +153,30 @@ export default function CheckoutPage() {
             <Separator className="bg-gray-100" />
           </div>
 
-          {/* PIX Payment Section */}
+          {/* ─── PIX Payment Section ──────────────────────────────────── */}
           <div className="p-6 space-y-5">
             <div className="text-center">
               <p className="text-sm font-medium text-gray-700 mb-4">
                 Pagar via PIX
               </p>
 
-              {/* QR Code Placeholder */}
-              <div className="w-48 h-48 mx-auto bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center mb-5">
-                <div className="flex flex-col items-center gap-2 text-gray-400">
-                  <QrCode className="h-16 w-16" />
-                  <span className="text-xs">QR Code</span>
+              {/* QR Code — render base64 or placeholder */}
+              {data.pix_code ? (
+                <div className="w-48 h-48 mx-auto rounded-xl overflow-hidden border border-gray-100 mb-5">
+                  <img
+                    src={'data:image/png;base64,' + data.pix_code}
+                    alt="QR Code PIX"
+                    className="w-48 h-48 mx-auto"
+                  />
                 </div>
-              </div>
+              ) : (
+                <div className="w-48 h-48 mx-auto bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center mb-5">
+                  <div className="flex flex-col items-center gap-2 text-gray-400">
+                    <QrCode className="h-16 w-16" />
+                    <span className="text-xs">QR Code</span>
+                  </div>
+                </div>
+              )}
 
               {/* Copy-paste PIX code */}
               {data.pix_copy_paste && (
@@ -179,7 +212,7 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          {/* Footer */}
+          {/* ─── Footer ───────────────────────────────────────────────── */}
           <div className="bg-gray-50 px-6 py-4 border-t border-gray-100">
             <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
               <Shield className="h-3.5 w-3.5" />

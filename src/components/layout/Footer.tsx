@@ -6,7 +6,7 @@ import { NeXPayLogo } from './NeXPayLogo';
 
 export default function Footer() {
   return (
-    <footer className="glass-strong mt-16 border-t border-white/10">
+    <footer className="glass-strong mt-auto border-t border-white/10">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         {/* 4-column grid */}
         <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
