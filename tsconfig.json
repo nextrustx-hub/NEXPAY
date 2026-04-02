@@ -39,6 +39,7 @@
   "exclude": [
     "node_modules",
     "generate-*.ts",
+    "generate-*.js",
     "*.script.ts",
     "examples",
     "skills"

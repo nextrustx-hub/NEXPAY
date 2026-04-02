@@ -52,4 +52,5 @@ server.log
 
 # Root-level scripts (not part of the build)
 generate-*.ts
+generate-*.js
 *.script.ts
