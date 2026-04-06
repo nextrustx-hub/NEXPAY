@@ -15,6 +15,9 @@ import {
   Shield,
   AlertCircle,
   Loader2,
+  Landmark,
+  Bitcoin,
+  CircleDollarSign,
 } from 'lucide-react';
 
 /* ─── Helpers ──────────────────────────────────────────────────────────── */
@@ -27,6 +30,8 @@ function formatAmount(amount: number, currency: string): string {
   return `${amount.toFixed(2)} ${currency}`;
 }
 
+const CRYPTO_CURRENCIES = ['USDT', 'BTC', 'ETH', 'LTC', 'XMR'];
+
 /* ─── Main Component ──────────────────────────────────────────────────── */
 
 export default function CheckoutPage() {
@@ -36,7 +41,7 @@ export default function CheckoutPage() {
   const [checkout, setCheckout] = useState<CheckoutDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
 
   /* ─── Fetch checkout details ───────────────────────────────────────── */
   useEffect(() => {
@@ -58,24 +63,30 @@ export default function CheckoutPage() {
     };
   }, [id]);
 
-  /* ─── Copy PIX code ────────────────────────────────────────────────── */
-  const handleCopyPix = async () => {
-    if (!checkout?.data?.pix_copy_paste) return;
+  /* ─── Copy helper ────────────────────────────────────────────────── */
+  const handleCopy = async (text: string, field: string) => {
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(checkout.data.pix_copy_paste);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      await navigator.clipboard.writeText(text);
     } catch {
-      // fallback
       const ta = document.createElement('textarea');
-      ta.value = checkout.data.pix_copy_paste;
+      ta.value = text;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
     }
+    setCopied(field);
+    setTimeout(() => setCopied(null), 2500);
+  };
+
+  /* ─── Determine payment type based on currency ──────────────────── */
+  const getPaymentType = (currency: string): 'pix' | 'sepa' | 'crypto' => {
+    if (currency === 'BRL') return 'pix';
+    if (currency === 'EUR') return 'sepa';
+    if (CRYPTO_CURRENCIES.includes(currency)) return 'crypto';
+    // Fallback: if backend provides specific fields, detect from response
+    return 'pix';
   };
 
   /* ─── Loading State ────────────────────────────────────────────────── */
@@ -110,6 +121,7 @@ export default function CheckoutPage() {
   }
 
   const { data } = checkout;
+  const paymentType = getPaymentType(data.currency);
 
   return (
     <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-4">
@@ -153,63 +165,204 @@ export default function CheckoutPage() {
             <Separator className="bg-gray-100" />
           </div>
 
-          {/* ─── PIX Payment Section ──────────────────────────────────── */}
+          {/* ─── Payment Section (Hybrid: PIX / SEPA / Crypto) ─────── */}
           <div className="p-6 space-y-5">
-            <div className="text-center">
-              <p className="text-sm font-medium text-gray-700 mb-4">
-                Pagar via PIX
-              </p>
 
-              {/* QR Code — render base64 or placeholder */}
-              {data.pix_code ? (
-                <div className="w-48 h-48 mx-auto rounded-xl overflow-hidden border border-gray-100 mb-5">
-                  <img
-                    src={'data:image/png;base64,' + data.pix_code}
-                    alt="QR Code PIX"
-                    className="w-48 h-48 mx-auto"
-                  />
-                </div>
-              ) : (
-                <div className="w-48 h-48 mx-auto bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center mb-5">
-                  <div className="flex flex-col items-center gap-2 text-gray-400">
-                    <QrCode className="h-16 w-16" />
-                    <span className="text-xs">QR Code</span>
-                  </div>
-                </div>
-              )}
+            {/* ══════ PIX (BRL) ══════ */}
+            {paymentType === 'pix' && (
+              <div className="text-center">
+                <p className="text-sm font-medium text-gray-700 mb-4">
+                  Pagar via PIX
+                </p>
 
-              {/* Copy-paste PIX code */}
-              {data.pix_copy_paste && (
-                <div className="space-y-2">
-                  <label className="text-xs text-gray-500 font-medium">
-                    Código PIX Copia e Cola
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      readOnly
-                      value={data.pix_copy_paste}
-                      className="flex-1 font-mono text-xs bg-gray-50 border-gray-200 text-gray-600 h-10 pr-2"
+                {/* QR Code */}
+                {data.pix_code ? (
+                  <div className="w-48 h-48 mx-auto rounded-xl overflow-hidden border border-gray-100 mb-5">
+                    <img
+                      src={data.pix_code.startsWith('data:') ? data.pix_code : 'data:image/png;base64,' + data.pix_code}
+                      alt="QR Code PIX"
+                      className="w-48 h-48 mx-auto"
                     />
-                    <Button
-                      onClick={handleCopyPix}
-                      className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white h-10 px-4"
-                    >
-                      {copied ? (
-                        <>
-                          <Check className="h-4 w-4 mr-1.5" />
-                          Copiado!
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-4 w-4 mr-1.5" />
-                          Copiar
-                        </>
-                      )}
-                    </Button>
+                  </div>
+                ) : (
+                  <div className="w-48 h-48 mx-auto bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center mb-5">
+                    <div className="flex flex-col items-center gap-2 text-gray-400">
+                      <QrCode className="h-16 w-16" />
+                      <span className="text-xs">QR Code</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Copy-paste PIX code */}
+                {data.pix_copy_paste && (
+                  <div className="space-y-2">
+                    <label className="text-xs text-gray-500 font-medium">
+                      Código PIX Copia e Cola
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        readOnly
+                        value={data.pix_copy_paste}
+                        className="flex-1 font-mono text-xs bg-gray-50 border-gray-200 text-gray-600 h-10 pr-2"
+                      />
+                      <Button
+                        onClick={() => handleCopy(data.pix_copy_paste!, 'pix')}
+                        className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white h-10 px-4"
+                      >
+                        {copied === 'pix' ? (
+                          <><Check className="h-4 w-4 mr-1.5" />Copiado!</>
+                        ) : (
+                          <><Copy className="h-4 w-4 mr-1.5" />Copiar</>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ══════ SEPA / IBAN (EUR) ══════ */}
+            {paymentType === 'sepa' && data.bank_details && (
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-4 flex items-center justify-center gap-2">
+                  <Landmark className="h-4 w-4" />
+                  Transferência SEPA
+                </p>
+
+                <div className="space-y-4 p-4 rounded-xl bg-gray-50 border border-gray-100">
+                  {/* Bank Name */}
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Banco</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-gray-900 font-medium">{data.bank_details.bank_name}</p>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-gray-400 hover:text-gray-600" onClick={() => handleCopy(data.bank_details!.bank_name, 'bank')}>
+                        {copied === 'bank' ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* IBAN */}
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">IBAN</p>
+                    <div className="flex items-center gap-2">
+                      <Input readOnly value={data.bank_details.iban} className="flex-1 font-mono text-xs bg-white border-gray-200 text-gray-900 h-10" />
+                      <Button size="icon" variant="ghost" className="h-10 w-10 shrink-0 text-gray-400 hover:text-gray-600" onClick={() => handleCopy(data.bank_details!.iban, 'iban')}>
+                        {copied === 'iban' ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* BIC / SWIFT */}
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">BIC / SWIFT</p>
+                    <div className="flex items-center gap-2">
+                      <Input readOnly value={data.bank_details.bic} className="flex-1 font-mono text-xs bg-white border-gray-200 text-gray-900 h-10" />
+                      <Button size="icon" variant="ghost" className="h-10 w-10 shrink-0 text-gray-400 hover:text-gray-600" onClick={() => handleCopy(data.bank_details!.bic, 'bic')}>
+                        {copied === 'bic' ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Account Holder */}
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Titular da Conta</p>
+                    <div className="flex items-center gap-2">
+                      <Input readOnly value={data.bank_details.account_holder} className="flex-1 text-sm bg-white border-gray-200 text-gray-900 h-10" />
+                      <Button size="icon" variant="ghost" className="h-10 w-10 shrink-0 text-gray-400 hover:text-gray-600" onClick={() => handleCopy(data.bank_details!.account_holder, 'holder')}>
+                        {copied === 'holder' ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Reference */}
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Referência</p>
+                    <div className="flex items-center gap-2">
+                      <Input readOnly value={data.bank_details.reference} className="flex-1 font-mono text-xs bg-white border-gray-200 text-gray-900 h-10" />
+                      <Button size="icon" variant="ghost" className="h-10 w-10 shrink-0 text-gray-400 hover:text-gray-600" onClick={() => handleCopy(data.bank_details!.reference, 'ref')}>
+                        {copied === 'ref' ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-amber-600 mt-1">
+                      ⚠️ Inclua esta referência no campo &quot;Motivo/Descrição&quot; da transferência para identificação automática.
+                    </p>
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* ══════ Crypto (USDT, BTC, etc.) ══════ */}
+            {paymentType === 'crypto' && data.crypto_address && (
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-4 flex items-center justify-center gap-2">
+                  {data.currency === 'BTC' ? (
+                    <Bitcoin className="h-4 w-4 text-orange-500" />
+                  ) : (
+                    <CircleDollarSign className="h-4 w-4 text-green-500" />
+                  )}
+                  Pagamento em {data.currency}
+                </p>
+
+                <div className="space-y-4 p-4 rounded-xl bg-gray-50 border border-gray-100">
+                  {/* Network */}
+                  {data.crypto_network && (
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-gray-500">Rede</p>
+                      <span className="text-xs font-medium bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full">
+                        {data.crypto_network}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Crypto Address */}
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Endereço da Carteira</p>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        readOnly
+                        value={data.crypto_address}
+                        className="flex-1 font-mono text-xs bg-white border-gray-200 text-gray-900 h-10"
+                      />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-10 w-10 shrink-0 text-gray-400 hover:text-gray-600"
+                        onClick={() => handleCopy(data.crypto_address!, 'crypto-addr')}
+                      >
+                        {copied === 'crypto-addr' ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg p-3">
+                    <p className="font-medium mb-1">⚠️ Atenção</p>
+                    <ul className="list-disc list-inside space-y-0.5 text-amber-700">
+                      <li>Envie apenas <strong>{data.currency}</strong> para este endereço.</li>
+                      {data.crypto_network && <li>Certifique-se de usar a rede <strong>{data.crypto_network}</strong>.</li>}
+                      <li>O pagamento será confirmado após a rede validar a transação.</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ─── Fallback: No payment data available ─────────────── */}
+            {paymentType === 'sepa' && !data.bank_details && (
+              <div className="text-center py-4">
+                <p className="text-sm text-gray-500">
+                  Dados bancários indisponíveis. Contacte o vendedor.
+                </p>
+              </div>
+            )}
+
+            {paymentType === 'crypto' && !data.crypto_address && (
+              <div className="text-center py-4">
+                <p className="text-sm text-gray-500">
+                  Endereço crypto indisponível. Contacte o vendedor.
+                </p>
+              </div>
+            )}
+
           </div>
 
           {/* ─── Footer ───────────────────────────────────────────────── */}

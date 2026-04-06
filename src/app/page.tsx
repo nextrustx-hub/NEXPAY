@@ -22,7 +22,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
-import type { Tier, Balances, Transaction } from '@/types/auth';
+import type { Tier, Balances, Transaction, DepositResponse, SepaDepositResponse, PixDepositResponse, CryptoDepositFiatResponse } from '@/types/auth';
+import { toast } from 'sonner';
 
 const formatCPF = (value: string) => {
   const numbers = value.replace(/\D/g, '').slice(0, 11);
@@ -246,7 +247,7 @@ function Dashboard() {
 
   // SEPA deposit
   const [sepaAmount, setSepaAmount] = useState('');
-  const [sepaResult, setSepaResult] = useState<Record<string, string> | null>(null);
+  const [sepaResult, setSepaResult] = useState<SepaDepositResponse['bank_details'] | null>(null);
   const [isDepositingSepa, setIsDepositingSepa] = useState(false);
 
   // Crypto deposit
@@ -280,6 +281,7 @@ function Dashboard() {
       const response = await api.getBalance();
       if (response.success) setBalances(response.balances);
     } catch {
+      toast.error('Falha ao carregar saldos');
     } finally {
       setIsLoadingBalances(false);
     }
@@ -291,6 +293,7 @@ function Dashboard() {
       const response = await api.getTransactions(10);
       if (response.success) setTransactions(response.data.transactions);
     } catch {
+      toast.error('Falha ao carregar transações');
     } finally {
       setIsLoadingTransactions(false);
     }
@@ -309,8 +312,13 @@ function Dashboard() {
     try {
       setIsDepositingPix(true);
       const response = await api.depositFiat(parseFloat(pixAmount), 'BRL');
-      if (response.success) { setPixQrCode(response.qr_code); setPixCopyPaste(response.copy_paste); }
-    } catch (err) { console.error(err); } finally { setIsDepositingPix(false); }
+      if (response.success && response.type === 'PIX_DYNAMIC') {
+        setPixQrCode(response.qr_code);
+        setPixCopyPaste(response.copy_paste);
+      }
+    } catch {
+      toast.error('Falha ao gerar PIX. Tente novamente.');
+    } finally { setIsDepositingPix(false); }
   };
 
   const handleSepaDeposit = async () => {
@@ -319,17 +327,15 @@ function Dashboard() {
       setIsDepositingSepa(true);
       const response = await api.depositFiat(parseFloat(sepaAmount), 'EUR');
       if (response.success) {
-        const fields: Record<string, string> = {};
-        if (response.transactionId) fields.reference = response.transactionId;
-        (Object.keys(response) as Array<keyof typeof response>).forEach((key) => {
-          const val = response[key];
-          if (val !== null && val !== undefined && typeof val === 'string' && key !== 'success' && key !== 'type') {
-            fields[key] = val;
-          }
-        });
-        setSepaResult(fields);
+        if (response.type === 'SEPA' && response.bank_details) {
+          setSepaResult(response.bank_details);
+        } else {
+          toast.error('Resposta inesperada do servidor para depósito SEPA');
+        }
       }
-    } catch (err) { console.error(err); } finally { setIsDepositingSepa(false); }
+    } catch {
+      toast.error('Falha ao gerar depósito SEPA. Tente novamente.');
+    } finally { setIsDepositingSepa(false); }
   };
 
   const getCryptoCurrencyCode = (): string => {
@@ -350,7 +356,9 @@ function Dashboard() {
       const currencyCode = getCryptoCurrencyCode();
       const response = await api.depositCrypto(currencyCode);
       if (response.success) { setCryptoResult({ address: response.address, network: response.network, min_deposit: response.min_deposit }); }
-    } catch (err) { console.error(err); } finally { setIsDepositingCrypto(false); }
+    } catch {
+      toast.error('Falha ao gerar carteira crypto. Tente novamente.');
+    } finally { setIsDepositingCrypto(false); }
   };
 
   const handleWithdraw = async () => {
@@ -362,7 +370,8 @@ function Dashboard() {
         await api.withdrawFiat(parseFloat(withdrawAmount), 'BRL', withdrawPixKey);
       } else if (withdrawTab === 'sepa') {
         if (!withdrawIban) return;
-        await api.withdrawFiat(parseFloat(withdrawAmount), 'EUR', withdrawIban);
+        if (!withdrawHolderName) { toast.error('Nome do titular é obrigatório para saque SEPA'); return; }
+        await api.withdrawFiat(parseFloat(withdrawAmount), 'EUR', withdrawIban, withdrawHolderName);
       } else if (withdrawTab === 'crypto') {
         if (!withdrawCryptoAddress) return;
         const networkCode = withdrawCryptoCurrency === 'USDT'
@@ -378,7 +387,10 @@ function Dashboard() {
       setWithdrawCryptoAddress('');
       loadBalances();
       loadTransactions();
-    } catch (err) { console.error(err); } finally { setIsWithdrawing(false); }
+      toast.success('Saque realizado com sucesso!');
+    } catch {
+      toast.error('Falha ao processar saque. Tente novamente.');
+    } finally { setIsWithdrawing(false); }
   };
 
   const resetDepositModal = () => {
@@ -676,22 +688,55 @@ function Dashboard() {
                             Depósito gerado com sucesso!
                           </div>
                           <div className="space-y-3 p-4 rounded-lg bg-white/5 border border-white/10">
-                            {Object.entries(sepaResult).map(([key, value]) => (
-                              <div key={key}>
-                                <p className="text-xs text-gray-500">{key.replace(/_/g, ' ').toUpperCase()}</p>
-                                <div className="flex items-center gap-2">
-                                  <p className="text-sm text-white font-mono break-all">{String(value)}</p>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-7 w-7 shrink-0"
-                                    onClick={() => handleCopy(String(value), 'sepa-' + key)}
-                                  >
-                                    {copiedField === 'sepa-' + key ? <CheckCircle2 className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
-                                  </Button>
+                            {sepaResult && (
+                              <>
+                                <div>
+                                  <p className="text-xs text-gray-500">Banco</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm text-white font-medium">{sepaResult.bank_name}</p>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => handleCopy(sepaResult.bank_name, 'sepa-bank')}>
+                                      {copiedField === 'sepa-bank' ? <CheckCircle2 className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+                                    </Button>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                                <div>
+                                  <p className="text-xs text-gray-500">IBAN</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm text-white font-mono break-all">{sepaResult.iban}</p>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => handleCopy(sepaResult.iban, 'sepa-iban')}>
+                                      {copiedField === 'sepa-iban' ? <CheckCircle2 className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+                                    </Button>
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-500">BIC / SWIFT</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm text-white font-mono">{sepaResult.bic}</p>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => handleCopy(sepaResult.bic, 'sepa-bic')}>
+                                      {copiedField === 'sepa-bic' ? <CheckCircle2 className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+                                    </Button>
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-500">Titular da Conta</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm text-white">{sepaResult.account_holder}</p>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => handleCopy(sepaResult.account_holder, 'sepa-holder')}>
+                                      {copiedField === 'sepa-holder' ? <CheckCircle2 className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+                                    </Button>
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-500">Referência</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm text-white font-mono break-all">{sepaResult.reference}</p>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => handleCopy(sepaResult.reference, 'sepa-ref')}>
+                                      {copiedField === 'sepa-ref' ? <CheckCircle2 className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+                                    </Button>
+                                  </div>
+                                </div>
+                              </>
+                            )}
                           </div>
                           <Button variant="outline" className="w-full" onClick={() => { setSepaResult(null); setSepaAmount(''); }}>
                             <RefreshCw className="h-4 w-4 mr-2" />Novo Depósito

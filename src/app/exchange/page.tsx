@@ -28,6 +28,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import type { Balances } from '@/types/auth';
+import { toast } from 'sonner';
 
 const CURRENCIES = [
   { value: 'BRL', label: 'BRL', symbol: 'R$', icon: '💵' },
@@ -79,7 +80,9 @@ export default function ExchangePage() {
       setIsLoadingBalances(true);
       const response = await api.getBalance();
       if (response.success) setBalances(response.balances);
-    } catch {} finally {
+    } catch {
+      toast.error('Falha ao carregar saldos');
+    } finally {
       setIsLoadingBalances(false);
     }
   };
@@ -132,7 +135,7 @@ export default function ExchangePage() {
         loadBalances();
       }
     } catch {
-      setSwapError('Erro ao realizar conversão. Tente novamente.');
+      toast.error('Falha na comunicação com o servidor');
     } finally {
       setIsSwapping(false);
     }

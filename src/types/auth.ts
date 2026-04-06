@@ -49,13 +49,38 @@ export interface BalanceResponse {
   balances: Balances;
 }
 
-export interface DepositResponse {
+// ─── Deposit Response: Union Type (Backend is source of truth) ───
+// The API returns different shapes depending on deposit type.
+
+export interface DepositBase {
   success: boolean;
+  transactionId: string;
+}
+
+export interface PixDepositResponse extends DepositBase {
   type: 'PIX_DYNAMIC';
   qr_code: string;
   copy_paste: string;
-  transactionId: string;
 }
+
+export interface SepaDepositResponse extends DepositBase {
+  type: 'SEPA';
+  bank_details: {
+    iban: string;
+    bank_name: string;
+    bic: string;
+    account_holder: string;
+    reference: string;
+  };
+}
+
+export interface CryptoDepositFiatResponse extends DepositBase {
+  type: 'CRYPTO';
+  crypto_address: string;
+  network: string;
+}
+
+export type DepositResponse = PixDepositResponse | SepaDepositResponse | CryptoDepositFiatResponse;
 
 export interface WithdrawResponse {
   success: boolean;
@@ -181,9 +206,21 @@ export interface CheckoutDetails {
     currency: string;
     amount: number;
     status: string;
+    created_at: string;
+    // PIX (BRL)
     pix_code?: string;
     pix_copy_paste?: string;
-    created_at: string;
+    // SEPA (EUR)
+    bank_details?: {
+      iban: string;
+      bank_name: string;
+      bic: string;
+      account_holder: string;
+      reference: string;
+    };
+    // Crypto (USDT, BTC, etc.)
+    crypto_address?: string;
+    crypto_network?: string;
   };
 }
 

@@ -9,6 +9,9 @@ import type {
   MeResponse,
   BalanceResponse,
   DepositResponse,
+  SepaDepositResponse,
+  PixDepositResponse,
+  CryptoDepositFiatResponse,
   WithdrawResponse,
   SwapResponse,
   TransactionsResponse,
@@ -186,10 +189,14 @@ class ApiService {
     });
   }
 
-  async withdrawFiat(amount: number, currency: string, pix_key: string): Promise<WithdrawResponse> {
+  async withdrawFiat(amount: number, currency: string, pix_key: string, holder_name?: string): Promise<WithdrawResponse> {
+    const payload: Record<string, unknown> = { amount, currency, pix_key };
+    if (currency === 'EUR' && holder_name) {
+      payload.holder_name = holder_name;
+    }
     return this.request<WithdrawResponse>('/wallet/withdraw/fiat', {
       method: 'POST',
-      body: JSON.stringify({ amount, currency, pix_key }),
+      body: JSON.stringify(payload),
     });
   }
 
