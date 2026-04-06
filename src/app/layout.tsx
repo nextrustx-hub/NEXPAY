@@ -23,13 +23,54 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: "NeXPay — Sua Carteira Digital Segura",
-  description: "Carteira digital segura para BRL, EUR, USDT e BTC. Depósitos via PIX, saques instantâneos e swap de moedas.",
-  keywords: ["NeXPay", "carteira digital", "wallet", "PIX", "Bitcoin", "USDT", "BRL", "EUR", "crypto", "swap"],
+  description: "Carteira digital segura para BRL, EUR, USDT e BTC. Depósitos via PIX, SEPA e Crypto. Saques instantâneos e swap de moedas com taxas competitivas.",
+  keywords: ["NeXPay", "carteira digital", "wallet", "PIX", "SEPA", "Bitcoin", "USDT", "BRL", "EUR", "crypto", "swap", "NexTrustX"],
+  authors: [{ name: "NexTrustX" }],
+  creator: "NexTrustX",
+  publisher: "NexTrustX",
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
   icons: {
-    icon: "/logo.png",
-    apple: "/logo.png",
+    icon: [
+      { url: "/favicon.ico", sizes: "48x48" },
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon.png", sizes: "64x64", type: "image/png" },
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
   },
   manifest: "/manifest.json",
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    url: "https://nexpay.com",
+    siteName: "NeXPay",
+    title: "NeXPay — Sua Carteira Digital Segura",
+    description: "Carteira digital segura para BRL, EUR, USDT e BTC. Depósitos via PIX, SEPA e Crypto. Saques instantâneos e swap de moedas.",
+    images: [
+      {
+        url: "/logo-512.png",
+        width: 512,
+        height: 512,
+        alt: "NeXPay Logo",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "NeXPay — Sua Carteira Digital Segura",
+    description: "Carteira digital segura para BRL, EUR, USDT e BTC.",
+    images: ["/logo-512.png"],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
